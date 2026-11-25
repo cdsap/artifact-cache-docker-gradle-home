@@ -201,6 +201,7 @@ run_runner() {
     -e "ONLINE=$ONLINE" \
     -e "STORE_AFTER_BUILD=$STORE_AFTER_BUILD" \
     -e "CLI_VERBOSE=$CLI_VERBOSE" \
+    -e CLI_TIMEOUT -e CLI_OPERATION_TIMEOUT -e CLI_OPERATION_CONCURRENCY \
     -v "$PROJECT:/mnt/project:ro" \
     -v "$OUT_ROOT/$role:/out" \
     "$RUNNER_IMAGE" "$role"

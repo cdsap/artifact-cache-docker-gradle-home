@@ -74,6 +74,9 @@ not load the image, the build fails instead of quietly pulling it.
 | `--store-on-restore` | let the restore runner store too, as CI would |
 | `--skip-guh-build` | reuse the GUH image already in the local registry |
 
+Slow uplink to the Edge? Each layer is one upload. `CLI_OPERATION_TIMEOUT` (default `PT20M`),
+`CLI_OPERATION_CONCURRENCY` and `CLI_TIMEOUT` (default `PT90M`) are passed to the CLI.
+
 Logs, the CLI's `--reporting-directory` output and the generated final Dockerfile go
 to `.docker-run/<cache-image-name>/`.
 

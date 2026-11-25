@@ -78,10 +78,15 @@ CLI_OPTS=(
   "--image-name=${CACHE_IMAGE_NAME:-}"
   "--autodetect=DOCKER"
   "--disable-setup-cache"
-  "--timeout=${CLI_TIMEOUT:-PT30M}"
+  "--timeout=${CLI_TIMEOUT:-PT90M}"
+  # Each Docker layer is one upload of up to ~95 MiB. The 60s default per
+  # operation times out on a slow uplink, and an image missing any layer is
+  # never restored.
+  "--operation-timeout=${CLI_OPERATION_TIMEOUT:-PT20M}"
   "--reporting-directory=$OUT/ac-logs"
 )
 if [ "${CLI_VERBOSE:-1}" = "1" ]; then CLI_OPTS+=("--verbose"); fi
+if [ -n "${CLI_OPERATION_CONCURRENCY:-}" ]; then CLI_OPTS+=("--operation-concurrency=$CLI_OPERATION_CONCURRENCY"); fi
 cli() { (cd /work && java -jar "$ARTIFACT_CACHE_CLI_JAR" "$@"); }
 
 check_cli_log() {
