@@ -1,0 +1,54 @@
+name: Docker image cache test
+
+# Manual only: the job uses repository secrets, and pull requests from forks
+# must not be able to run it.
+on:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: Gradle task the runners build
+        default: ':app:compileDemoDebugKotlin'
+      control:
+        description: Also run a cache-free control runner
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Logs of a public repository are public. Mask the server host and its
+      # domain, which also hides the Edge hostname the CLI prints.
+      - name: Mask the Develocity host
+        env:
+          DEVELOCITY_URL: ${{ secrets.DEVELOCITY_URL }}
+        run: |
+          host="$(echo "$DEVELOCITY_URL" | sed -E 's#^https?://##; s#/.*$##')"
+          echo "::add-mask::$host"
+          domain="${host#*.}"
+          case "$domain" in *.*) echo "::add-mask::$domain" ;; esac
+
+      # The GUH image build keeps the warm and split stages in the build cache,
+      # and each runner holds the image again in its own Docker daemon.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - name: Run seed, restore and control
+        env:
+          DV_SERVER: ${{ secrets.DEVELOCITY_URL }}
+          DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
+          CLI_OPERATION_CONCURRENCY: '4'
+          TASK: ${{ inputs.task }}
+          CONTROL: ${{ inputs.control }}
+        run: |
+          args=(--task "$TASK")
+          if [ "$CONTROL" = true ]; then args+=(--control); fi
+          ./run.sh "${args[@]}"

@@ -17,6 +17,12 @@ export DEVELOCITY_ACCESS_KEY='develocity.example.com=<key>'
 ./run.sh --control
 ```
 
+Or on GitHub Actions: add the repository secrets `DEVELOCITY_URL` and
+`DEVELOCITY_ACCESS_KEY` (the bare key, or `host=key`), then run the
+*Docker image cache test* workflow by hand. It masks the server host and its domain in
+the job log, which is public on a public repository. A GitHub-hosted runner is not
+next to your Edge, so its timings show that the mechanism works, not what it saves.
+
 | Runner | Docker daemon | How the GUH image arrives | Then |
 |---|---|---|---|
 | seed | its own, empty | `docker pull` from the registry | build, **store** |

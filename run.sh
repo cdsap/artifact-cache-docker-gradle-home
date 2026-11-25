@@ -92,6 +92,8 @@ if [ -z "${DEVELOCITY_ACCESS_KEY:-}" ]; then
   echo "ERROR: no access key for $DV_HOST. export DEVELOCITY_ACCESS_KEY='$DV_HOST=<key>'" >&2
   exit 1
 fi
+# A bare key (no "host=") is taken to be for DV_SERVER.
+case "$DEVELOCITY_ACCESS_KEY" in *=*) ;; *) DEVELOCITY_ACCESS_KEY="$DV_HOST=$DEVELOCITY_ACCESS_KEY" ;; esac
 export DEVELOCITY_ACCESS_KEY
 MEM_GIB=$(( $(docker info --format '{{.MemTotal}}') / 1024 / 1024 / 1024 ))
 echo "   docker memory    : ${MEM_GIB} GiB"
