@@ -1,0 +1,160 @@
+name: Build
+
+# Builds the Android project INSIDE a Docker image that carries the Gradle user
+# home (JDK, Android SDK, warmed dependencies), with the Develocity Artifact
+# Cache restoring that Docker image before the build and storing it after.
+#
+#   guh-image   makes sure the GUH image for the current dependencies exists
+#               in GHCR (tag from docker/guh-tag.sh); builds and pushes it if not
+#   build       Artifact Cache restore -> `docker run` the build in the GUH
+#               image -> Artifact Cache store (the action's post step)
+#
+# Required configuration:
+#   secrets.DEVELOCITY_URL          e.g. https://develocity.example.com
+#   secrets.DEVELOCITY_ACCESS_KEY   host=key form, e.g. develocity.example.com=<key>
+#
+# The first build for a new GUH tag pulls it from GHCR and stores it; later
+# builds should load it from the Edge without a registry pull.
+
+on:
+  push:
+  workflow_dispatch:
+    inputs:
+      task:
+        description: Gradle tasks to run inside the GUH image
+        default: assembleDebug testDebugUnitTest
+      offline:
+        description: Build with --offline (fails if the image lacks anything)
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+env:
+  DEVELOCITY_URL: ${{ secrets.DEVELOCITY_URL }}
+
+jobs:
+  guh-image:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      image: ${{ steps.ref.outputs.image }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Image reference
+        id: ref
+        run: echo "image=ghcr.io/${GITHUB_REPOSITORY,,}/guh:$(docker/guh-tag.sh)" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
+      - name: Check whether the image exists
+        id: exists
+        env:
+          IMAGE: ${{ steps.ref.outputs.image }}
+        run: |
+          if docker manifest inspect "$IMAGE" > /dev/null 2>&1; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "$IMAGE already in GHCR" | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The build keeps the warm and split stages in its cache; make room.
+      - name: Free disk space
+        if: steps.exists.outputs.found != 'true'
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - name: Build and push the GUH image
+        if: steps.exists.outputs.found != 'true'
+        env:
+          IMAGE: ${{ steps.ref.outputs.image }}
+        run: |
+          docker/build-guh-image.sh "$IMAGE"
+          echo "Built and pushed $IMAGE" >> "$GITHUB_STEP_SUMMARY"
+
+  build:
+    needs: guh-image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    env:
+      GUH_IMAGE: ${{ needs.guh-image.outputs.image }}
+    steps:
+      # Public repo, public logs: the CLI prints the Develocity and Edge hosts,
+      # and GitHub only masks exact secret values. Masking the domain covers
+      # the Edge host too.
+      - name: Mask Develocity hosts
+        run: |
+          host="${DEVELOCITY_URL#*://}"; host="${host%%/*}"
+          if [ -n "$host" ]; then
+            echo "::add-mask::$host"
+            domain="${host#*.}"
+            case "$domain" in *.*) echo "::add-mask::$domain" ;; esac
+          fi
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Docker images before the restore
+        run: docker images --format '{{.Repository}}:{{.Tag}} {{.Size}}'
+
+      # Main step restores, post step stores at the end of the job (only if the
+      # job succeeds). Docker only: the Gradle user home lives in the image.
+      # Each image layer is one upload of up to ~95 MiB, hence the longer
+      # per-operation timeout. Skipped until DEVELOCITY_URL is configured.
+      - name: Develocity Artifact Cache (Docker images)
+        if: env.DEVELOCITY_URL != ''
+        uses: gradle/develocity-artifact-cache-github-action@0366b879b8a1dce1303e672064645c5cc228e0b9 # v1.2.0
+        with:
+          develocity-url: ${{ secrets.DEVELOCITY_URL }}
+          develocity-access-key: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
+          additional-cli-args: |
+            --autodetect=DOCKER
+            --disable-setup-cache
+            --operation-timeout=PT20M
+
+      # After the restore, so a restored image is not pulled again. The pull in
+      # `docker run` must go through this runner's daemon, during the job:
+      # a job-level `container:` would pull before the restore, unseen.
+      - name: Log in to GHCR
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: echo "$GITHUB_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+
+      - name: Was the GUH image restored?
+        id: restored
+        run: |
+          if docker image inspect "$GUH_IMAGE" > /dev/null 2>&1; then present=yes; else present=no; fi
+          echo "present=$present" >> "$GITHUB_OUTPUT"
+          {
+            echo "### GUH image"
+            echo "\`$GUH_IMAGE\` on the runner before \`docker run\`: **$present**"
+            [ "$present" = yes ] && echo "(loaded by Artifact Cache, no registry pull)" \
+              || echo "(pulled from GHCR by \`docker run\`; the store step caches it for the next build)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Build inside the GUH image
+        env:
+          TASK: ${{ inputs.task || 'assembleDebug testDebugUnitTest' }}
+          OFFLINE: ${{ github.event_name == 'workflow_dispatch' && !inputs.offline && 'false' || 'true' }}
+          DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
+        run: |
+          args=($TASK --no-watch-fs)
+          if [ "$OFFLINE" = true ]; then args+=(--offline); fi
+          start=$(date +%s)
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE:/home/runner/work/project" \
+            -w /home/runner/work/project \
+            -e DEVELOCITY_URL -e DEVELOCITY_ACCESS_KEY \
+            "$GUH_IMAGE" ./gradlew "${args[@]}" \
+              -Dscan.tag.guh-docker "-Dscan.value.guhImageRestored=${{ steps.restored.outputs.present }}"
+          echo "\`docker run\` incl. any pull: $(( $(date +%s) - start ))s" >> "$GITHUB_STEP_SUMMARY"

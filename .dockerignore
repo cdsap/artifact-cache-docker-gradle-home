@@ -1,0 +1,11 @@
+# The GUH image is warmed from the Android project only. Workflows, the image
+# tooling and docs stay out, so editing them does not re-run the warm build.
+.git
+.github
+.docker-build
+docker
+*.md
+**/build
+**/.gradle
+.kotlin
+local.properties
