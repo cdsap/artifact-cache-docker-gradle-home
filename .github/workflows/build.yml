@@ -22,7 +22,7 @@ on:
     inputs:
       task:
         description: Gradle tasks to run inside the GUH image
-        default: assembleDebug testDebugUnitTest
+        default: assembleDebug
       offline:
         description: Build with --offline (fails if the image lacks anything)
         type: boolean
@@ -144,7 +144,7 @@ jobs:
 
       - name: Build inside the GUH image
         env:
-          TASK: ${{ inputs.task || 'assembleDebug testDebugUnitTest' }}
+          TASK: ${{ inputs.task || 'assembleDebug' }}
           OFFLINE: ${{ github.event_name == 'workflow_dispatch' && !inputs.offline && 'false' || 'true' }}
           DEVELOCITY_ACCESS_KEY: ${{ secrets.DEVELOCITY_ACCESS_KEY }}
         run: |

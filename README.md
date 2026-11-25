@@ -74,6 +74,14 @@ means it was loaded by Artifact Cache with no registry pull.
 
 ## Caveats
 
+- **A single file above the Edge limit makes the image uncacheable**, because no
+  layering can split one file. Robolectric's `nativeruntime-dist-compat` jar, which
+  the unit tests pull in, is 157 MiB. Its transformed copy is 146 MiB. So the image
+  is warmed with `assembleDebug` only, and the build runs `assembleDebug` by default.
+  To include unit tests, raise the Edge's maximum artifact size above ~160 MiB. Then
+  build the image with `WARM_TASK="assembleDebug testDebugUnitTest" LAYER_LIMIT_MIB=160`.
+  A Gradle-user-home Artifact Cache hits the same limit for that jar.
+
 - GitHub-hosted runners are not next to your Edge. Restore time therefore includes
   wide-area transfer and `docker load` of the whole image. Treat the timings as proof
   that the mechanism works, not as a savings figure.

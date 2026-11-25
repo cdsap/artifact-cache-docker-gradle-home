@@ -20,7 +20,7 @@ FROM eclipse-temurin:23-jdk-noble AS warm
 ARG ANDROID_CMDLINE_TOOLS_ZIP=commandlinetools-linux-13114758_latest.zip
 ARG ANDROID_CMDLINE_TOOLS_SHA1=5fdcc763663eefb86a5b8879697aa6088b041e70
 ARG ANDROID_COMPILE_SDK=36
-ARG WARM_TASK="assembleDebug testDebugUnitTest"
+ARG WARM_TASK=assembleDebug
 
 RUN apt-get update \
  && apt-get install -y --no-install-recommends ca-certificates curl unzip \

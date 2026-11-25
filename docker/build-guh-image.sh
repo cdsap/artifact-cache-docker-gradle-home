@@ -6,13 +6,13 @@
 #   docker/build-guh-image.sh <image-ref>
 #
 # Environment:
-#   WARM_TASK          tasks that warm the Gradle user home (default: assembleDebug testDebugUnitTest)
+#   WARM_TASK          tasks that warm the Gradle user home (default: assembleDebug)
 #   LAYER_LIMIT_MIB    largest layer (default: 95; the Edge default limit is 100 MiB)
 #   PUSH               0 to only load the image locally (default: 1)
 set -euo pipefail
 
 IMAGE_REF="${1:?usage: build-guh-image.sh <image-ref>}"
-WARM_TASK="${WARM_TASK:-assembleDebug testDebugUnitTest}"
+WARM_TASK="${WARM_TASK:-assembleDebug}"
 LAYER_LIMIT_MIB="${LAYER_LIMIT_MIB:-95}"
 PUSH="${PUSH:-1}"
 
